@@ -1,0 +1,4 @@
+# Cloudflare Pages — build output for this Expo web app
+name = "daily-stock"
+compatibility_date = "2024-05-15"
+pages_build_output_dir = "./dist"
