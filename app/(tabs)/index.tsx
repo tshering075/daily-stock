@@ -1,98 +1,305 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { useCallback, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { AppHeader } from '@/components/app-header';
+import { BackLink } from '@/components/back-link';
+import { SelectionList } from '@/components/selection-list';
+import { ScreenSection } from '@/components/screen-section';
+import { StockForm } from '@/components/stock-form';
+import { isSheetsConfigured } from '@/constants/config';
+import { AppTheme } from '@/constants/app-theme';
+import {
+  DIRECT_ENTRY_OPTION_ID,
+  countDistributorsInZone,
+  getDistributorById,
+  getDistributorsForPreseller,
+  getPresellerById,
+  getPresellersInZone,
+  getSelfServiceDistributors,
+  getZoneName,
+  zoneHasPresellers,
+  ZONES,
+  type ZoneId,
+} from '@/constants/distributors';
+import { submitToGoogleSheet, type ProductStock } from '@/lib/sheets';
+
+type EntryMode = 'preseller' | 'distributor';
+type Step = 'region' | 'who' | 'distributor' | 'form';
+
+const ZONE_ICONS: Record<
+  ZoneId,
+  { icon: 'sunny-outline' | 'leaf-outline' | 'water-outline'; color: string; bg: string }
+> = {
+  eastern: { icon: 'sunny-outline', color: AppTheme.colors.eastern, bg: '#fff7ed' },
+  western: { icon: 'leaf-outline', color: AppTheme.colors.western, bg: '#f5f3ff' },
+  southern: { icon: 'water-outline', color: AppTheme.colors.southern, bg: '#f0f9ff' },
+};
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [step, setStep] = useState<Step>('region');
+  const [zoneId, setZoneId] = useState<ZoneId | null>(null);
+  const [entryMode, setEntryMode] = useState<EntryMode | null>(null);
+  const [presellerId, setPresellerId] = useState<string | null>(null);
+  const [distributorId, setDistributorId] = useState<string | null>(null);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const preseller = presellerId ? getPresellerById(presellerId) : undefined;
+  const distributor = distributorId ? getDistributorById(distributorId) : undefined;
+
+  const resetAll = useCallback(() => {
+    setStep('region');
+    setZoneId(null);
+    setEntryMode(null);
+    setPresellerId(null);
+    setDistributorId(null);
+  }, []);
+
+  const resetToRegion = useCallback(() => {
+    setStep('region');
+    setZoneId(null);
+    setEntryMode(null);
+    setPresellerId(null);
+    setDistributorId(null);
+  }, []);
+
+  const resetToWho = useCallback(() => {
+    setStep(zoneId && zoneHasPresellers(zoneId) ? 'who' : 'region');
+    setEntryMode(zoneId && !zoneHasPresellers(zoneId) ? 'distributor' : null);
+    setPresellerId(null);
+    setDistributorId(null);
+  }, [zoneId]);
+
+  const resetToDistributor = useCallback(() => {
+    setStep('distributor');
+    setDistributorId(null);
+  }, []);
+
+  const handleSubmit = async (values: {
+    csd: ProductStock;
+    kinleyWater: ProductStock;
+  }) => {
+    if (!distributor || !entryMode || !zoneId) return;
+
+    const presellerName =
+      entryMode === 'preseller' && preseller ? preseller.name : '—';
+
+    const result = await submitToGoogleSheet({
+      entryType: entryMode,
+      preseller: presellerName,
+      distributor: `${distributor.name}, ${distributor.location}`,
+      region: getZoneName(zoneId),
+      csd: values.csd,
+      kinleyWater: values.kinleyWater,
+    });
+
+    if (result.ok) {
+      Alert.alert('Saved', `Stock data for ${distributor.name} has been saved.`, [
+        { text: 'Update another', onPress: resetToDistributor },
+        { text: 'Done', style: 'cancel' },
+      ]);
+    } else {
+      Alert.alert('Could not save', result.message);
+    }
+  };
+
+  const hasPsrStep = zoneId ? zoneHasPresellers(zoneId) : true;
+
+  const stepLabels = hasPsrStep
+    ? ['Region', 'Who', 'Shop', 'Stock']
+    : ['Region', 'Shop', 'Stock'];
+
+  const stepIndex = hasPsrStep
+    ? step === 'region'
+      ? 0
+      : step === 'who'
+        ? 1
+        : step === 'distributor'
+          ? 2
+          : 3
+    : step === 'region'
+      ? 0
+      : step === 'distributor'
+        ? 1
+        : 2;
+
+  const zonePresellers = zoneId ? getPresellersInZone(zoneId) : [];
+
+  const whoListItems = zoneId
+    ? [
+        ...zonePresellers.map((p) => ({
+          id: p.id,
+          title: p.name,
+          subtitle: `${getDistributorsForPreseller(p.id, zoneId).length} distributor(s)`,
+          icon: 'person-outline' as const,
+          iconColor: AppTheme.colors.primary,
+          iconBg: AppTheme.colors.accentSoft,
+        })),
+        ...(getSelfServiceDistributors(zoneId).length > 0
+          ? [
+              {
+                id: DIRECT_ENTRY_OPTION_ID,
+                title: 'I am a distributor',
+                subtitle: `${getSelfServiceDistributors(zoneId).length} self-service shop(s)`,
+                icon: 'storefront-outline' as const,
+                iconColor: AppTheme.colors.primary,
+                iconBg: AppTheme.colors.accentSoft,
+              },
+            ]
+          : []),
+      ]
+    : [];
+
+  const distributorListItems =
+    zoneId && entryMode === 'preseller' && preseller
+      ? getDistributorsForPreseller(preseller.id, zoneId)
+      : zoneId
+        ? getSelfServiceDistributors(zoneId)
+        : [];
+
+  const submittedByLabel =
+    entryMode === 'preseller' && preseller ? preseller.name : 'Distributor (self)';
+
+  const sheetWarning = !isSheetsConfigured
+    ? 'Google Sheet not linked. Add EXPO_PUBLIC_GOOGLE_SHEETS_URL to your .env file.'
+    : null;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <AppHeader stepLabels={stepLabels} stepIndex={stepIndex} warning={sheetWarning} />
+
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}>
+        {step === 'region' ? (
+          <ScreenSection
+            title="Select region"
+            hint="Eastern uses pre-sellers. Western and Southern: pick your shop directly.">
+            <SelectionList
+              items={ZONES.map((z) => {
+                const meta = ZONE_ICONS[z.id];
+                return {
+                  id: z.id,
+                  title: z.name,
+                  subtitle: zoneHasPresellers(z.id)
+                    ? `${countDistributorsInZone(z.id)} distributors`
+                    : `${countDistributorsInZone(z.id)} shops`,
+                  icon: meta.icon,
+                  iconColor: meta.color,
+                  iconBg: meta.bg,
+                };
+              })}
+              onSelect={(id) => {
+                const zone = id as ZoneId;
+                setZoneId(zone);
+                if (zoneHasPresellers(zone)) {
+                  setStep('who');
+                } else {
+                  setEntryMode('distributor');
+                  setPresellerId(null);
+                  setStep('distributor');
+                }
+              }}
+            />
+          </ScreenSection>
+        ) : null}
+
+        {step === 'who' && zoneId && zoneHasPresellers(zoneId) ? (
+          <>
+            <BackLink
+              label={`Change region (${getZoneName(zoneId)})`}
+              onPress={resetToRegion}
+            />
+            <ScreenSection
+              title="Who is updating?"
+              hint='Pre-sellers: tap your name. Shops without a pre-seller: choose "I am a distributor".'>
+              <SelectionList items={whoListItems} onSelect={(id) => {
+                if (id === DIRECT_ENTRY_OPTION_ID) {
+                  setEntryMode('distributor');
+                  setPresellerId(null);
+                  setStep('distributor');
+                } else {
+                  setEntryMode('preseller');
+                  setPresellerId(id);
+                  setStep('distributor');
+                }
+              }} />
+            </ScreenSection>
+          </>
+        ) : null}
+
+        {step === 'distributor' && entryMode && zoneId ? (
+          <>
+            <BackLink
+              label={
+                zoneHasPresellers(zoneId)
+                  ? 'Back'
+                  : `Change region (${getZoneName(zoneId)})`
+              }
+              onPress={resetToWho}
+            />
+            <ScreenSection
+              title={
+                entryMode === 'preseller'
+                  ? `Select distributor`
+                  : `Select your shop`
+              }
+              hint={
+                entryMode === 'preseller' && preseller
+                  ? `Pre-seller: ${preseller.name} · ${getZoneName(zoneId)}`
+                  : `${getZoneName(zoneId)} region`
+              }>
+              <SelectionList
+                items={distributorListItems.map((d) => ({
+                  id: d.id,
+                  title: d.name,
+                  subtitle: d.location,
+                  icon: 'business-outline' as const,
+                  iconColor: AppTheme.colors.primaryDark,
+                  iconBg: AppTheme.colors.accentSoft,
+                }))}
+                onSelect={(id) => {
+                  setDistributorId(id);
+                  setStep('form');
+                }}
+              />
+            </ScreenSection>
+          </>
+        ) : null}
+
+        {step === 'form' && distributor && entryMode && zoneId ? (
+          <>
+            <BackLink label="Start over" onPress={resetAll} />
+            <StockForm
+              submittedByLabel={submittedByLabel}
+              distributorLabel={`${distributor.name}, ${distributor.location}`}
+              zoneLabel={getZoneName(zoneId)}
+              onSubmit={handleSubmit}
+              onBack={resetToDistributor}
+            />
+          </>
+        ) : null}
+
+        <View style={styles.footerSpacer} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  safe: {
+    flex: 1,
+    backgroundColor: AppTheme.colors.background,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  body: {
+    flex: 1,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  bodyContent: {
+    padding: AppTheme.spacing.md,
+    paddingBottom: AppTheme.spacing.xl,
+  },
+  footerSpacer: {
+    height: 8,
   },
 });
