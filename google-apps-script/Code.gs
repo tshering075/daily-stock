@@ -6,7 +6,7 @@
  * 2. Extensions → Apps Script (NOT script.google.com by itself).
  * 3. Paste this entire file → Save (Ctrl+S).
  * 4. In the function dropdown, choose "runSetup" → Run → Allow permissions.
- * 5. Check your sheet for a tab named "Daily Stock".
+ * 5. Check your sheet for tabs named Eastern, Western, and Southern.
  * 6. Deploy → New deployment → Web app → Anyone → copy /exec URL to .env
  *
  * If runSetup still fails: copy your Sheet ID from the URL
@@ -17,7 +17,8 @@
 /** Leave empty if the script was created from Extensions → Apps Script inside the sheet. */
 var SPREADSHEET_ID = '';
 
-var SHEET_NAME = 'Daily Stock';
+/** One tab per region; names must match the app (constants/distributors.ts). */
+var REGION_SHEET_NAMES = ['Eastern', 'Western', 'Southern'];
 
 var HEADERS = [
   'Timestamp',
@@ -40,9 +41,9 @@ var HEADERS = [
  */
 function runSetup() {
   var ss = getSpreadsheet();
-  var sheet = ensureSheetWithHeaders(ss);
-  Logger.log('OK: Sheet "' + SHEET_NAME + '" is ready in "' + ss.getName() + '".');
-  return 'Success — open the "' + SHEET_NAME + '" tab in: ' + ss.getUrl();
+  ensureAllRegionSheets(ss);
+  Logger.log('OK: Region tabs are ready in "' + ss.getName() + '".');
+  return 'Success — open the Eastern, Western, or Southern tabs in: ' + ss.getUrl();
 }
 
 function getSpreadsheet() {
@@ -60,10 +61,38 @@ function getSpreadsheet() {
   return ss;
 }
 
-function ensureSheetWithHeaders(ss) {
-  var sheet = ss.getSheetByName(SHEET_NAME);
+function ensureAllRegionSheets(ss) {
+  for (var i = 0; i < REGION_SHEET_NAMES.length; i++) {
+    ensureSheetWithHeaders(ss, REGION_SHEET_NAMES[i]);
+  }
+}
+
+function resolveRegionSheetName(region) {
+  var raw = String(region || '').trim();
+  if (!raw) {
+    throw new Error('Region is required.');
+  }
+
+  var lower = raw.toLowerCase();
+  for (var i = 0; i < REGION_SHEET_NAMES.length; i++) {
+    if (REGION_SHEET_NAMES[i].toLowerCase() === lower) {
+      return REGION_SHEET_NAMES[i];
+    }
+  }
+
+  throw new Error(
+    'Unknown region "' +
+      raw +
+      '". Expected one of: ' +
+      REGION_SHEET_NAMES.join(', ') +
+      '.'
+  );
+}
+
+function ensureSheetWithHeaders(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(sheetName);
   }
 
   var lastRow = sheet.getLastRow();
@@ -74,11 +103,11 @@ function ensureSheetWithHeaders(ss) {
 
   var firstCell = sheet.getRange(1, 1).getValue();
   if (firstCell !== HEADERS[0]) {
-    // New sheet layout — add a fresh tab instead of clearing user data
-    var newName = SHEET_NAME + ' ' + Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
+    var newName =
+      sheetName + ' ' + Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
     sheet = ss.insertSheet(newName);
     writeHeaderRow(sheet);
-    Logger.log('Created new tab "' + newName + '" because existing "' + SHEET_NAME + '" had different headers.');
+    Logger.log('Created new tab "' + newName + '" because existing "' + sheetName + '" had different headers.');
   }
 
   return sheet;
@@ -92,7 +121,7 @@ function writeHeaderRow(sheet) {
 
 /** Used by doPost — do not run from the editor. */
 function setupSheet() {
-  ensureSheetWithHeaders(getSpreadsheet());
+  ensureAllRegionSheets(getSpreadsheet());
 }
 
 function num(val) {
@@ -148,8 +177,9 @@ function doPost(e) {
     }
 
     var ss = getSpreadsheet();
-    var sheet = ensureSheetWithHeaders(ss);
     var data = JSON.parse(e.postData.contents);
+    var sheetName = resolveRegionSheetName(data.region);
+    var sheet = ensureSheetWithHeaders(ss, sheetName);
     var csd = productRow('csd', data);
     var kinley = productRow('kinleyWater', data);
 
