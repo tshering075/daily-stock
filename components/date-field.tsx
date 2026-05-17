@@ -72,13 +72,16 @@ export function DateField({
           }}
           style={{
             width: '100%',
+            maxWidth: '100%',
+            minWidth: 0,
             height: 38,
+            boxSizing: 'border-box',
             borderRadius: 8,
             border: `1px solid ${AppTheme.colors.border}`,
             backgroundColor: AppTheme.colors.surfaceMuted,
-            paddingLeft: 8,
-            paddingRight: 8,
-            fontSize: 14,
+            paddingLeft: 6,
+            paddingRight: 6,
+            fontSize: 13,
             color: AppTheme.colors.text,
             fontFamily: 'system-ui, sans-serif',
             opacity: editable ? 1 : 0.6,
@@ -93,7 +96,6 @@ export function DateField({
       <Pressable
         style={({ pressed }) => [
           styles.field,
-          { width },
           pressed && editable && styles.fieldPressed,
           !editable && styles.fieldDisabled,
         ]}
@@ -104,7 +106,12 @@ export function DateField({
         <Text style={value ? styles.valueText : styles.placeholder} numberOfLines={1}>
           {value || placeholder}
         </Text>
-        <Ionicons name="calendar-outline" size={16} color={AppTheme.colors.textSecondary} />
+        <Ionicons
+          name="calendar-outline"
+          size={15}
+          color={AppTheme.colors.textSecondary}
+          style={styles.calendarIcon}
+        />
       </Pressable>
 
       {Platform.OS === 'ios' ? (
@@ -152,9 +159,13 @@ export function DateField({
 
 const styles = StyleSheet.create({
   wrap: {
+    width: '100%',
+    flexShrink: 0,
     justifyContent: 'center',
   },
   field: {
+    width: '100%',
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -163,9 +174,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: AppTheme.colors.border,
     borderRadius: AppTheme.radius.sm,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 8,
     minHeight: 38,
+    overflow: 'hidden',
   },
   fieldPressed: {
     backgroundColor: AppTheme.colors.surface,
@@ -173,14 +185,21 @@ const styles = StyleSheet.create({
   fieldDisabled: {
     opacity: 0.6,
   },
+  calendarIcon: {
+    flexShrink: 0,
+  },
   valueText: {
     flex: 1,
-    fontSize: 14,
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: 12,
     color: AppTheme.colors.text,
   },
   placeholder: {
     flex: 1,
-    fontSize: 14,
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: 12,
     color: '#94a3b8',
   },
   modalBackdrop: {

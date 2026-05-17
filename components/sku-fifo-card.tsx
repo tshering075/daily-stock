@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -19,11 +19,14 @@ import {
   type FifoLotFields,
 } from '@/lib/sku-stock';
 
+const COL_GAP = 10;
+
 const COL = {
-  num: 36,
-  date: 118,
-  batch: 100,
-  stock: 96,
+  num: 32,
+  date: 136,
+  batch: 108,
+  stock: 88,
+  action: 32,
 };
 
 type SkuFifoCardProps = {
@@ -70,15 +73,31 @@ export function SkuFifoCard({ sku, lots, editable, onChangeLots }: SkuFifoCardPr
         contentContainerStyle={styles.tableScroll}>
         <View>
           <View style={styles.headerRow}>
-            <Text style={[styles.headerCell, styles.colNum]}>#</Text>
-            <Text style={[styles.headerCell, { width: COL.date }]}>MFG date</Text>
-            <Text style={[styles.headerCell, { width: COL.batch }]}>Batch no.</Text>
-            <Text style={[styles.headerCell, { width: COL.date }]}>BBD date</Text>
-            <Text style={[styles.headerCell, { width: COL.stock }]}>Opening</Text>
-            <Text style={[styles.headerCell, { width: COL.stock }]}>Primary</Text>
-            <Text style={[styles.headerCell, { width: COL.stock }]}>Physical</Text>
-            <Text style={[styles.headerCell, { width: COL.stock }]}>Secondary</Text>
-            <View style={styles.colAction} />
+            <TableCell width={COL.num}>
+              <Text style={[styles.headerCell, styles.colNumText]}>#</Text>
+            </TableCell>
+            <TableCell width={COL.date}>
+              <Text style={styles.headerCell}>MFG date</Text>
+            </TableCell>
+            <TableCell width={COL.batch}>
+              <Text style={styles.headerCell}>Batch no.</Text>
+            </TableCell>
+            <TableCell width={COL.date}>
+              <Text style={styles.headerCell}>BBD date</Text>
+            </TableCell>
+            <TableCell width={COL.stock}>
+              <Text style={styles.headerCell}>Opening</Text>
+            </TableCell>
+            <TableCell width={COL.stock}>
+              <Text style={styles.headerCell}>Primary</Text>
+            </TableCell>
+            <TableCell width={COL.stock}>
+              <Text style={styles.headerCell}>Physical</Text>
+            </TableCell>
+            <TableCell width={COL.stock}>
+              <Text style={styles.headerCell}>Secondary</Text>
+            </TableCell>
+            <TableCell width={COL.action} />
           </View>
 
           {lots.map((lot, index) => (
@@ -144,70 +163,93 @@ function LotRow({
 
   return (
     <View style={styles.dataRow}>
-      <Text style={[styles.lotNum, styles.colNum]}>{lotNo}</Text>
-      <DateField
-        width={COL.date}
-        value={lot.mfgDate}
-        editable={editable}
-        onChange={(v) => onChange({ mfgDate: v })}
-      />
-      <CellInput
-        width={COL.batch}
-        value={lot.batchNo}
-        placeholder="Batch"
-        editable={editable}
-        onChangeText={(v) => onChange({ batchNo: v })}
-      />
-      <DateField
-        width={COL.date}
-        value={lot.bbdDate}
-        editable={editable}
-        onChange={(v) => onChange({ bbdDate: v })}
-      />
-      <CellInput
-        width={COL.stock}
-        value={lot.openingStock}
-        placeholder="0"
-        keyboardType="decimal-pad"
-        editable={editable}
-        onChangeText={(v) => onChange({ openingStock: v })}
-      />
-      <CellInput
-        width={COL.stock}
-        value={lot.primarySale}
-        placeholder="0"
-        keyboardType="decimal-pad"
-        editable={editable}
-        onChangeText={(v) => onChange({ primarySale: v })}
-      />
-      <CellInput
-        width={COL.stock}
-        value={lot.physicalStock}
-        placeholder="0"
-        keyboardType="decimal-pad"
-        editable={editable}
-        onChangeText={(v) => onChange({ physicalStock: v })}
-      />
-      <View style={[styles.secondaryCell, { width: COL.stock }]}>
-        <Text style={styles.secondaryValue}>{secondary !== null ? secondary : '—'}</Text>
-      </View>
-      <Pressable
-        style={[styles.removeBtn, styles.colAction]}
-        onPress={onRemove}
-        disabled={!editable || !canRemove}
-        hitSlop={8}>
-        <Ionicons
-          name="trash-outline"
-          size={18}
-          color={canRemove && editable ? AppTheme.colors.textSecondary : 'transparent'}
+      <TableCell width={COL.num}>
+        <Text style={styles.lotNum}>{lotNo}</Text>
+      </TableCell>
+      <TableCell width={COL.date}>
+        <DateField
+          width={COL.date}
+          value={lot.mfgDate}
+          editable={editable}
+          onChange={(v) => onChange({ mfgDate: v })}
         />
-      </Pressable>
+      </TableCell>
+      <TableCell width={COL.batch}>
+        <CellInput
+          width={COL.batch}
+          value={lot.batchNo}
+          placeholder="Batch"
+          editable={editable}
+          onChangeText={(v) => onChange({ batchNo: v })}
+        />
+      </TableCell>
+      <TableCell width={COL.date}>
+        <DateField
+          width={COL.date}
+          value={lot.bbdDate}
+          editable={editable}
+          onChange={(v) => onChange({ bbdDate: v })}
+        />
+      </TableCell>
+      <TableCell width={COL.stock}>
+        <CellInput
+          width={COL.stock}
+          value={lot.openingStock}
+          placeholder="0"
+          keyboardType="decimal-pad"
+          editable={editable}
+          onChangeText={(v) => onChange({ openingStock: v })}
+        />
+      </TableCell>
+      <TableCell width={COL.stock}>
+        <CellInput
+          width={COL.stock}
+          value={lot.primarySale}
+          placeholder="0"
+          keyboardType="decimal-pad"
+          editable={editable}
+          onChangeText={(v) => onChange({ primarySale: v })}
+        />
+      </TableCell>
+      <TableCell width={COL.stock}>
+        <CellInput
+          width={COL.stock}
+          value={lot.physicalStock}
+          placeholder="0"
+          keyboardType="decimal-pad"
+          editable={editable}
+          onChangeText={(v) => onChange({ physicalStock: v })}
+        />
+      </TableCell>
+      <TableCell width={COL.stock}>
+        <View style={styles.secondaryCell}>
+          <Text style={styles.secondaryValue} numberOfLines={1}>
+            {secondary !== null ? secondary : '—'}
+          </Text>
+        </View>
+      </TableCell>
+      <TableCell width={COL.action}>
+        <Pressable
+          style={styles.removeBtn}
+          onPress={onRemove}
+          disabled={!editable || !canRemove}
+          hitSlop={8}>
+          <Ionicons
+            name="trash-outline"
+            size={18}
+            color={canRemove && editable ? AppTheme.colors.textSecondary : 'transparent'}
+          />
+        </Pressable>
+      </TableCell>
     </View>
   );
 }
 
+function TableCell({ width, children }: { width: number; children?: ReactNode }) {
+  return <View style={{ width, flexShrink: 0, flexGrow: 0 }}>{children}</View>;
+}
+
 function CellInput({
-  width,
   value,
   placeholder,
   editable,
@@ -223,7 +265,7 @@ function CellInput({
 }) {
   return (
     <TextInput
-      style={[styles.cellInput, { width }]}
+      style={styles.cellInput}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
@@ -255,7 +297,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: COL_GAP,
     paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: AppTheme.colors.border,
@@ -266,28 +308,26 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.textSecondary,
     textTransform: 'uppercase',
   },
+  colNumText: {
+    textAlign: 'center',
+  },
   dataRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: COL_GAP,
     paddingVertical: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: AppTheme.colors.border,
   },
-  colNum: {
-    width: COL.num,
-    textAlign: 'center',
-  },
-  colAction: {
-    width: 28,
-    alignItems: 'center',
-  },
   lotNum: {
+    width: '100%',
+    textAlign: 'center',
     fontSize: 14,
     fontWeight: '700',
     color: AppTheme.colors.text,
   },
   cellInput: {
+    width: '100%',
     backgroundColor: AppTheme.colors.surfaceMuted,
     borderWidth: 1,
     borderColor: AppTheme.colors.border,
@@ -298,8 +338,9 @@ const styles = StyleSheet.create({
     color: AppTheme.colors.text,
   },
   secondaryCell: {
+    width: '100%',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   secondaryValue: {
     fontSize: 15,
