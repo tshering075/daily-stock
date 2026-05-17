@@ -36,4 +36,11 @@ function loadEnvFiles() {
 
 loadEnvFiles();
 
-module.exports = require('./app.json');
+const appJson = require('./app.json');
+
+module.exports = {
+  expo: {
+    ...appJson.expo,
+    plugins: [...(appJson.expo.plugins || []), '@react-native-community/datetimepicker'],
+  },
+};

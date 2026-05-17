@@ -1,4 +1,5 @@
 import { GOOGLE_SHEETS_URL, isSheetsConfigured } from '@/constants/config';
+import type { SkuDetailSubmission } from '@/lib/sku-stock';
 
 export type ProductStock = {
   openingStock: number;
@@ -14,6 +15,7 @@ export type StockSubmission = {
   region: string;
   csd: ProductStock;
   kinleyWater: ProductStock;
+  skuDetails: SkuDetailSubmission[];
 };
 
 export function calculateSecondarySale(

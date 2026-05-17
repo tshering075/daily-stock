@@ -6,7 +6,7 @@
  * 2. Extensions → Apps Script (NOT script.google.com by itself).
  * 3. Paste this entire file → Save (Ctrl+S).
  * 4. In the function dropdown, choose "runSetup" → Run → Allow permissions.
- * 5. Check your sheet for tabs named Eastern, Western, and Southern.
+ * 5. Check your sheet for region tabs + "{Region} SKU details" tabs.
  * 6. Deploy → New deployment → Web app → Anyone → copy /exec URL to .env
  *
  * If runSetup still fails: copy your Sheet ID from the URL
@@ -36,14 +36,30 @@ var HEADERS = [
   'Kinley Secondary Sale',
 ];
 
+var SKU_DETAILS_HEADERS = [
+  'Distributor',
+  'Region',
+  'Date',
+  'Product SKU',
+  'FIFO Lot No.',
+  'MFG Date',
+  'Batch No.',
+  'BBD Date',
+  'Opening Stock',
+  'Primary Sale',
+  'Physical Stock',
+  'Secondary Sale',
+];
+
 /**
  * Run THIS function from the editor (not doPost, not setupSheet alone).
  */
 function runSetup() {
   var ss = getSpreadsheet();
   ensureAllRegionSheets(ss);
-  Logger.log('OK: Region tabs are ready in "' + ss.getName() + '".');
-  return 'Success — open the Eastern, Western, or Southern tabs in: ' + ss.getUrl();
+  ensureAllSkuDetailSheets(ss);
+  Logger.log('OK: Region + SKU detail tabs are ready in "' + ss.getName() + '".');
+  return 'Success — open region tabs and SKU details tabs in: ' + ss.getUrl();
 }
 
 function getSpreadsheet() {
@@ -61,9 +77,19 @@ function getSpreadsheet() {
   return ss;
 }
 
+function skuDetailsSheetName(region) {
+  return resolveRegionSheetName(region) + ' SKU details';
+}
+
 function ensureAllRegionSheets(ss) {
   for (var i = 0; i < REGION_SHEET_NAMES.length; i++) {
-    ensureSheetWithHeaders(ss, REGION_SHEET_NAMES[i]);
+    ensureSheetWithHeaders(ss, REGION_SHEET_NAMES[i], HEADERS);
+  }
+}
+
+function ensureAllSkuDetailSheets(ss) {
+  for (var i = 0; i < REGION_SHEET_NAMES.length; i++) {
+    ensureSheetWithHeaders(ss, REGION_SHEET_NAMES[i] + ' SKU details', SKU_DETAILS_HEADERS);
   }
 }
 
@@ -89,7 +115,7 @@ function resolveRegionSheetName(region) {
   );
 }
 
-function ensureSheetWithHeaders(ss, sheetName) {
+function ensureSheetWithHeaders(ss, sheetName, headers) {
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
     sheet = ss.insertSheet(sheetName);
@@ -97,31 +123,33 @@ function ensureSheetWithHeaders(ss, sheetName) {
 
   var lastRow = sheet.getLastRow();
   if (lastRow === 0) {
-    writeHeaderRow(sheet);
+    writeHeaderRow(sheet, headers);
     return sheet;
   }
 
   var firstCell = sheet.getRange(1, 1).getValue();
-  if (firstCell !== HEADERS[0]) {
+  if (firstCell !== headers[0]) {
     var newName =
       sheetName + ' ' + Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd');
     sheet = ss.insertSheet(newName);
-    writeHeaderRow(sheet);
+    writeHeaderRow(sheet, headers);
     Logger.log('Created new tab "' + newName + '" because existing "' + sheetName + '" had different headers.');
   }
 
   return sheet;
 }
 
-function writeHeaderRow(sheet) {
-  sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-  sheet.getRange(1, 1, 1, HEADERS.length).setFontWeight('bold');
+function writeHeaderRow(sheet, headers) {
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
   sheet.setFrozenRows(1);
 }
 
 /** Used by doPost — do not run from the editor. */
 function setupSheet() {
-  ensureAllRegionSheets(getSpreadsheet());
+  var ss = getSpreadsheet();
+  ensureAllRegionSheets(ss);
+  ensureAllSkuDetailSheets(ss);
 }
 
 function num(val) {
@@ -167,6 +195,73 @@ function productRow(prefix, data) {
   ];
 }
 
+/** Sum opening / primary / physical / secondary from SKU detail rows for region summary. */
+function aggregateTotalsFromSkuDetails(skuDetails) {
+  var csd = [0, 0, 0, 0];
+  var kinley = [0, 0, 0, 0];
+
+  if (!skuDetails || !skuDetails.length) {
+    return { csd: csd, kinley: kinley };
+  }
+
+  for (var i = 0; i < skuDetails.length; i++) {
+    var row = skuDetails[i];
+    var opening = num(row.openingStock);
+    var primary = num(row.primarySale);
+    var physical = num(row.physicalStock);
+    var secondary = num(row.secondarySale);
+    var skuName = String(row.productSku || '');
+
+    if (skuName.indexOf('Kinley Water') === 0) {
+      kinley[0] += opening;
+      kinley[1] += primary;
+      kinley[2] += physical;
+      kinley[3] += secondary;
+    } else {
+      csd[0] += opening;
+      csd[1] += primary;
+      csd[2] += physical;
+      csd[3] += secondary;
+    }
+  }
+
+  return { csd: csd, kinley: kinley };
+}
+
+/**
+ * One row per FIFO lot → "{Region} SKU details" tab (all SKU fields).
+ * Returns number of rows written.
+ */
+function appendSkuDetailRows(ss, region, distributor, displayDate, skuDetails) {
+  if (!skuDetails || !skuDetails.length) {
+    return 0;
+  }
+
+  var sheet = ensureSheetWithHeaders(ss, skuDetailsSheetName(region), SKU_DETAILS_HEADERS);
+  var written = 0;
+
+  for (var i = 0; i < skuDetails.length; i++) {
+    var row = skuDetails[i];
+    sheet.appendRow([
+      distributor,
+      region,
+      displayDate,
+      row.productSku || '',
+      num(row.fifoLotNo),
+      row.mfgDate || '',
+      row.batchNo || '',
+      row.bbdDate || '',
+      num(row.openingStock),
+      num(row.primarySale),
+      num(row.physicalStock),
+      num(row.secondarySale),
+    ]);
+    written++;
+  }
+
+  return written;
+}
+
 function doPost(e) {
   try {
     if (!e || !e.postData || !e.postData.contents) {
@@ -178,17 +273,24 @@ function doPost(e) {
 
     var ss = getSpreadsheet();
     var data = JSON.parse(e.postData.contents);
-    var sheetName = resolveRegionSheetName(data.region);
-    var sheet = ensureSheetWithHeaders(ss, sheetName);
-    var csd = productRow('csd', data);
-    var kinley = productRow('kinleyWater', data);
+    var region = data.region || '';
+    var skuDetails = data.skuDetails || [];
+    var sheetName = resolveRegionSheetName(region);
+    var sheet = ensureSheetWithHeaders(ss, sheetName, HEADERS);
+    var displayDate = formatDisplayDate(new Date(), ss);
+    var distributor = data.distributor || '';
+
+    // Region tab = one summary row (CSD + Kinley totals). Prefer sums from SKU lots when present.
+    var totals = aggregateTotalsFromSkuDetails(skuDetails);
+    var csd = skuDetails.length > 0 ? totals.csd : productRow('csd', data);
+    var kinley = skuDetails.length > 0 ? totals.kinley : productRow('kinleyWater', data);
 
     sheet.appendRow([
-      formatDisplayDate(new Date(), ss),
+      displayDate,
       data.entryType === 'distributor' ? 'Distributor' : 'Pre-seller',
       data.preseller || '—',
-      data.distributor || '',
-      data.region || '',
+      distributor,
+      region,
       csd[0],
       csd[1],
       csd[2],
@@ -199,7 +301,10 @@ function doPost(e) {
       kinley[3],
     ]);
 
-    return jsonResponse({ success: true });
+    // SKU details tab = one row per lot with MFG, batch, BBD, and stock columns.
+    var skuRowsWritten = appendSkuDetailRows(ss, region, distributor, displayDate, skuDetails);
+
+    return jsonResponse({ success: true, skuRowsWritten: skuRowsWritten });
   } catch (err) {
     return jsonResponse({ success: false, error: String(err.message || err) });
   }

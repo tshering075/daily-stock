@@ -7,7 +7,7 @@ import { BackLink } from '@/components/back-link';
 import { SelectionList } from '@/components/selection-list';
 import { ScreenSection } from '@/components/screen-section';
 import { SheetViewLink } from '@/components/sheet-view-link';
-import { StockForm } from '@/components/stock-form';
+import { StockForm, type StockFormSubmitPayload } from '@/components/stock-form';
 import { isSheetsConfigured } from '@/constants/config';
 import { AppTheme } from '@/constants/app-theme';
 import {
@@ -23,7 +23,7 @@ import {
   ZONES,
   type ZoneId,
 } from '@/constants/distributors';
-import { submitToGoogleSheet, type ProductStock } from '@/lib/sheets';
+import { submitToGoogleSheet } from '@/lib/sheets';
 
 type EntryMode = 'preseller' | 'distributor';
 type Step = 'region' | 'who' | 'distributor' | 'form';
@@ -75,11 +75,10 @@ export default function HomeScreen() {
     setDistributorId(null);
   }, []);
 
-  const handleSubmit = async (values: {
-    csd: ProductStock;
-    kinleyWater: ProductStock;
-  }) => {
-    if (!distributor || !entryMode || !zoneId) return;
+  const handleSubmit = async (values: StockFormSubmitPayload) => {
+    if (!distributor || !entryMode || !zoneId) {
+      return { ok: false as const, message: 'Missing distributor or region.' };
+    }
 
     const presellerName =
       entryMode === 'preseller' && preseller ? preseller.name : '—';
@@ -91,6 +90,7 @@ export default function HomeScreen() {
       region: getZoneName(zoneId),
       csd: values.csd,
       kinleyWater: values.kinleyWater,
+      skuDetails: values.skuDetails,
     });
   };
 

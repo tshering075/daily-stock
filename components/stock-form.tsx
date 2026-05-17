@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -11,31 +11,31 @@ import {
   View,
 } from 'react-native';
 
-import {
-  ProductStockSection,
-  type ProductStockFields,
-  resolveProductStock,
-} from '@/components/product-stock-section';
+import { SkuFifoCard } from '@/components/sku-fifo-card';
 import { SuccessToast } from '@/components/success-toast';
+import { CSD_SKU_GROUPS, CSD_SKUS, KINLEY_WATER_SKUS } from '@/constants/products';
 import { AppTheme } from '@/constants/app-theme';
+import {
+  createInitialSkuLots,
+  resolveSkuCatalogLots,
+  type SkuDetailSubmission,
+  type SkuLotsState,
+} from '@/lib/sku-stock';
 import type { ProductStock } from '@/lib/sheets';
 
 export type SubmitResult = { ok: true } | { ok: false; message: string };
 
-const EMPTY: ProductStockFields = {
-  openingStock: '',
-  primarySale: '',
-  physicalStock: '',
+export type StockFormSubmitPayload = {
+  csd: ProductStock;
+  kinleyWater: ProductStock;
+  skuDetails: SkuDetailSubmission[];
 };
 
 type StockFormProps = {
   distributorLabel: string;
   submittedByLabel: string;
   zoneLabel: string;
-  onSubmit: (values: {
-    csd: ProductStock;
-    kinleyWater: ProductStock;
-  }) => Promise<SubmitResult>;
+  onSubmit: (values: StockFormSubmitPayload) => Promise<SubmitResult>;
   onBack: () => void;
 };
 
@@ -46,42 +46,51 @@ export function StockForm({
   onSubmit,
   onBack,
 }: StockFormProps) {
-  const [csd, setCsd] = useState<ProductStockFields>({ ...EMPTY });
-  const [kinleyWater, setKinleyWater] = useState<ProductStockFields>({ ...EMPTY });
+  const allSkuIds = useMemo(
+    () => [...CSD_SKUS, ...KINLEY_WATER_SKUS].map((s) => s.id),
+    []
+  );
+
+  const [skuLots, setSkuLots] = useState<SkuLotsState>(() => createInitialSkuLots(allSkuIds));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const updateSkuLots = (skuId: string, lots: SkuLotsState[string]) => {
+    setSkuLots((prev) => ({ ...prev, [skuId]: lots }));
+  };
+
   const handleSubmit = async () => {
     setError(null);
 
-    const csdResult = resolveProductStock(csd);
-    const kinleyResult = resolveProductStock(kinleyWater);
-
+    const csdResult = resolveSkuCatalogLots(skuLots, CSD_SKUS);
     if (!csdResult.ok) {
-      setError('CSD: fill all three fields, or leave the whole section blank.');
+      setError(csdResult.message);
       return;
     }
+
+    const kinleyResult = resolveSkuCatalogLots(skuLots, KINLEY_WATER_SKUS);
     if (!kinleyResult.ok) {
-      setError('Kinley Water: fill all three fields, or leave the whole section blank.');
+      setError(kinleyResult.message);
       return;
     }
-    if (csdResult.skipped && kinleyResult.skipped) {
-      setError('Enter stock for at least CSD or Kinley Water.');
+
+    if (!csdResult.hasData && !kinleyResult.hasData) {
+      setError('Enter stock for at least one CSD or Kinley Water SKU lot.');
       return;
     }
 
     setSubmitting(true);
     try {
       const result = await onSubmit({
-        csd: csdResult.data,
-        kinleyWater: kinleyResult.data,
+        csd: csdResult.aggregate,
+        kinleyWater: kinleyResult.aggregate,
+        skuDetails: [...csdResult.skuDetails, ...kinleyResult.skuDetails],
       });
 
       if (result.ok) {
         setSuccessMessage(`Stock updated successfully for ${distributorLabel}.`);
-        setCsd({ ...EMPTY });
-        setKinleyWater({ ...EMPTY });
+        setSkuLots(createInitialSkuLots(allSkuIds));
       } else {
         setError(result.message);
       }
@@ -112,28 +121,39 @@ export function StockForm({
           <ContextRow icon="person-outline" label="Submitted by" value={submittedByLabel} />
           <ContextRow icon="storefront-outline" label="Distributor" value={distributorLabel} />
           <Text style={styles.formHint}>
-            Update CSD only, Kinley Water only, or both. Leave a section blank if not reporting
-            today.
+            Enter each SKU by FIFO lot (scroll right for BBD and stock). Submit writes one summary
+            row on the region sheet plus each lot on the matching SKU details sheet.
           </Text>
         </View>
 
-        <ProductStockSection
-          title="CSD"
-          accentColor={AppTheme.colors.csd}
-          accentBg={AppTheme.colors.csdBg}
-          values={csd}
-          onChange={(field, value) => setCsd((prev) => ({ ...prev, [field]: value }))}
-          editable={!submitting}
-        />
+        <Text style={styles.sectionHeading}>CSD — by SKU</Text>
+        {CSD_SKU_GROUPS.map((group) => (
+          <View key={group.line} style={styles.skuGroup}>
+            <Text style={[styles.groupLabel, { color: group.accentColor }]}>{group.line}</Text>
+            {group.skus.map((sku) => (
+              <SkuFifoCard
+                key={sku.id}
+                sku={sku}
+                lots={skuLots[sku.id] ?? []}
+                editable={!submitting}
+                onChangeLots={(lots) => updateSkuLots(sku.id, lots)}
+              />
+            ))}
+          </View>
+        ))}
 
-        <ProductStockSection
-          title="Kinley Water"
-          accentColor={AppTheme.colors.kinley}
-          accentBg={AppTheme.colors.kinleyBg}
-          values={kinleyWater}
-          onChange={(field, value) => setKinleyWater((prev) => ({ ...prev, [field]: value }))}
-          editable={!submitting}
-        />
+        <Text style={[styles.sectionHeading, styles.kinleySectionHeading]}>
+          Kinley Water — by SKU
+        </Text>
+        {KINLEY_WATER_SKUS.map((sku) => (
+          <SkuFifoCard
+            key={sku.id}
+            sku={sku}
+            lots={skuLots[sku.id] ?? []}
+            editable={!submitting}
+            onChangeLots={(lots) => updateSkuLots(sku.id, lots)}
+          />
+        ))}
 
         {error ? (
           <View style={styles.errorBox}>
@@ -245,6 +265,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: AppTheme.colors.textSecondary,
     lineHeight: 19,
+  },
+  sectionHeading: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: AppTheme.colors.text,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  kinleySectionHeading: {
+    color: AppTheme.colors.kinley,
+  },
+  skuGroup: {
+    gap: 12,
+  },
+  groupLabel: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    marginBottom: -4,
   },
   errorBox: {
     flexDirection: 'row',
