@@ -1,11 +1,12 @@
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AppHeader } from '@/components/app-header';
 import { BackLink } from '@/components/back-link';
 import { SelectionList } from '@/components/selection-list';
 import { ScreenSection } from '@/components/screen-section';
+import { SheetViewLink } from '@/components/sheet-view-link';
 import { StockForm } from '@/components/stock-form';
 import { isSheetsConfigured } from '@/constants/config';
 import { AppTheme } from '@/constants/app-theme';
@@ -83,7 +84,7 @@ export default function HomeScreen() {
     const presellerName =
       entryMode === 'preseller' && preseller ? preseller.name : '—';
 
-    const result = await submitToGoogleSheet({
+    return submitToGoogleSheet({
       entryType: entryMode,
       preseller: presellerName,
       distributor: `${distributor.name}, ${distributor.location}`,
@@ -91,15 +92,6 @@ export default function HomeScreen() {
       csd: values.csd,
       kinleyWater: values.kinleyWater,
     });
-
-    if (result.ok) {
-      Alert.alert('Saved', `Stock data for ${distributor.name} has been saved.`, [
-        { text: 'Update another', onPress: resetToDistributor },
-        { text: 'Done', style: 'cancel' },
-      ]);
-    } else {
-      Alert.alert('Could not save', result.message);
-    }
   };
 
   const hasPsrStep = zoneId ? zoneHasPresellers(zoneId) : true;
@@ -202,6 +194,7 @@ export default function HomeScreen() {
                 }
               }}
             />
+            <SheetViewLink />
           </ScreenSection>
         ) : null}
 

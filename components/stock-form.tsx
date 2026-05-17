@@ -16,8 +16,11 @@ import {
   type ProductStockFields,
   resolveProductStock,
 } from '@/components/product-stock-section';
+import { SuccessToast } from '@/components/success-toast';
 import { AppTheme } from '@/constants/app-theme';
 import type { ProductStock } from '@/lib/sheets';
+
+export type SubmitResult = { ok: true } | { ok: false; message: string };
 
 const EMPTY: ProductStockFields = {
   openingStock: '',
@@ -29,7 +32,10 @@ type StockFormProps = {
   distributorLabel: string;
   submittedByLabel: string;
   zoneLabel: string;
-  onSubmit: (values: { csd: ProductStock; kinleyWater: ProductStock }) => Promise<void>;
+  onSubmit: (values: {
+    csd: ProductStock;
+    kinleyWater: ProductStock;
+  }) => Promise<SubmitResult>;
   onBack: () => void;
 };
 
@@ -44,6 +50,7 @@ export function StockForm({
   const [kinleyWater, setKinleyWater] = useState<ProductStockFields>({ ...EMPTY });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     setError(null);
@@ -66,10 +73,18 @@ export function StockForm({
 
     setSubmitting(true);
     try {
-      await onSubmit({
+      const result = await onSubmit({
         csd: csdResult.data,
         kinleyWater: kinleyResult.data,
       });
+
+      if (result.ok) {
+        setSuccessMessage(`Stock updated successfully for ${distributorLabel}.`);
+        setCsd({ ...EMPTY });
+        setKinleyWater({ ...EMPTY });
+      } else {
+        setError(result.message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -79,6 +94,11 @@ export function StockForm({
     <KeyboardAvoidingView
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <SuccessToast
+        message={successMessage ?? ''}
+        visible={successMessage !== null}
+        onHide={() => setSuccessMessage(null)}
+      />
       <ScrollView
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
