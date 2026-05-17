@@ -152,7 +152,7 @@ export default function HomeScreen() {
     entryMode === 'preseller' && preseller ? preseller.name : 'Distributor (self)';
 
   const sheetWarning = !isSheetsConfigured
-    ? 'Google Sheet not linked. Add EXPO_PUBLIC_GOOGLE_SHEETS_URL to your .env file.'
+    ? 'Google Sheet not linked. Set EXPO_PUBLIC_GOOGLE_SHEETS_URL in deployment.env or Cloudflare env vars, then redeploy.'
     : null;
 
   return (

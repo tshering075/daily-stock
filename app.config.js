@@ -1,32 +1,39 @@
 const fs = require('fs');
 const path = require('path');
 
-const ENV_KEYS_FROM_DOTENV = [
+const ENV_KEYS = [
   'EXPO_PUBLIC_GOOGLE_SHEETS_URL',
   'EXPO_PUBLIC_GOOGLE_SHEET_VIEW_URL',
 ];
 
-/** If the shell has an empty EXPO_PUBLIC_* value, read it from .env. */
-function ensureEnvFromDotenv() {
-  const envPath = path.join(__dirname, '.env');
-  if (!fs.existsSync(envPath)) return;
+/** Load EXPO_PUBLIC_* from env files when missing or blank (e.g. Cloudflare has no .env). */
+function loadEnvFiles() {
+  const files = ['.env', 'deployment.env'];
 
-  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
-
-  for (const key of ENV_KEYS_FROM_DOTENV) {
+  for (const key of ENV_KEYS) {
     if (process.env[key]?.trim()) continue;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      if (trimmed.startsWith(`${key}=`)) {
-        process.env[key] = trimmed.slice(key.length + 1).trim();
-        break;
+    for (const file of files) {
+      const envPath = path.join(__dirname, file);
+      if (!fs.existsSync(envPath)) continue;
+
+      for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        if (trimmed.startsWith(`${key}=`)) {
+          const value = trimmed.slice(key.length + 1).trim();
+          if (value) {
+            process.env[key] = value;
+            break;
+          }
+        }
       }
+
+      if (process.env[key]?.trim()) break;
     }
   }
 }
 
-ensureEnvFromDotenv();
+loadEnvFiles();
 
 module.exports = require('./app.json');
