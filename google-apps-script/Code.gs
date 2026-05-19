@@ -310,7 +310,92 @@ function doPost(e) {
   }
 }
 
-function doGet() {
+/**
+ * Returns MFG / batch / BBD from the distributor's most recent SKU details submission
+ * (same region tab). Used to pre-fill the app form the next day.
+ */
+function getLastSkuLotsForDistributor(ss, region, distributor) {
+  var sheet = ss.getSheetByName(skuDetailsSheetName(region));
+  if (!sheet) {
+    return [];
+  }
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) {
+    return [];
+  }
+
+  var distKey = String(distributor);
+  var regionKey = String(region);
+  var lastRowIdx = -1;
+
+  for (var i = data.length - 1; i >= 1; i--) {
+    var row = data[i];
+    if (String(row[0]) === distKey && String(row[1]) === regionKey) {
+      lastRowIdx = i;
+      break;
+    }
+  }
+
+  if (lastRowIdx < 0) {
+    return [];
+  }
+
+  var latestDate = data[lastRowIdx][2];
+  var lots = [];
+
+  for (var j = lastRowIdx; j >= 1; j--) {
+    var r = data[j];
+    if (String(r[0]) !== distKey || String(r[1]) !== regionKey) {
+      break;
+    }
+    if (r[2] !== latestDate) {
+      break;
+    }
+    lots.unshift({
+      productSku: String(r[3] || ''),
+      fifoLotNo: num(r[4]) || 1,
+      mfgDate: String(r[5] || ''),
+      batchNo: String(r[6] || ''),
+      bbdDate: String(r[7] || ''),
+    });
+  }
+
+  lots.sort(function (a, b) {
+    if (a.productSku !== b.productSku) {
+      return a.productSku < b.productSku ? -1 : 1;
+    }
+    return a.fifoLotNo - b.fifoLotNo;
+  });
+
+  return lots;
+}
+
+function doGet(e) {
+  var params = e && e.parameter ? e.parameter : {};
+
+  if (params.action === 'lastSkuLots') {
+    try {
+      var region = params.region || '';
+      var distributor = params.distributor || '';
+      if (!region || !distributor) {
+        return jsonResponse({
+          success: false,
+          error: 'region and distributor query parameters are required.',
+        });
+      }
+
+      var lots = getLastSkuLotsForDistributor(getSpreadsheet(), region, distributor);
+      return jsonResponse({
+        success: true,
+        skuLots: lots,
+        loadedFromDate: lots.length ? 'latest' : null,
+      });
+    } catch (err) {
+      return jsonResponse({ success: false, error: String(err.message || err) });
+    }
+  }
+
   return jsonResponse({ status: 'ok', message: 'Daily Stock API is running' });
 }
 

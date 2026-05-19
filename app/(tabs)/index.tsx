@@ -265,6 +265,7 @@ export default function HomeScreen() {
           <>
             <BackLink label="Start over" onPress={resetAll} />
             <StockForm
+              key={`${zoneId}-${distributorId}`}
               submittedByLabel={submittedByLabel}
               distributorLabel={`${distributor.name}, ${distributor.location}`}
               zoneLabel={getZoneName(zoneId)}

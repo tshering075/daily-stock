@@ -59,6 +59,8 @@ export const CSD_SKUS: ProductSku[] = buildCsdSkus();
 
 export const KINLEY_WATER_SKUS: ProductSku[] = buildKinleySkus();
 
+export const ALL_PRODUCT_SKUS: ProductSku[] = [...CSD_SKUS, ...KINLEY_WATER_SKUS];
+
 /** CSD SKUs grouped by product line for section headers in the form. */
 export const CSD_SKU_GROUPS = CSD_LINES.map((line) => ({
   line: line.code,

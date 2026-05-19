@@ -1,5 +1,5 @@
 import { GOOGLE_SHEETS_URL, isSheetsConfigured } from '@/constants/config';
-import type { SkuDetailSubmission } from '@/lib/sku-stock';
+import type { SkuDetailSubmission, SkuPrefillLot } from '@/lib/sku-stock';
 
 export type ProductStock = {
   openingStock: number;
@@ -24,6 +24,42 @@ export function calculateSecondarySale(
   physicalStock: number
 ): number {
   return openingStock + primarySale - physicalStock;
+}
+
+export async function fetchLastSkuPrefill(
+  region: string,
+  distributor: string
+): Promise<{ ok: true; skuLots: SkuPrefillLot[] } | { ok: false; message: string }> {
+  if (!isSheetsConfigured) {
+    return { ok: true, skuLots: [] };
+  }
+
+  try {
+    const url =
+      `${GOOGLE_SHEETS_URL}?action=lastSkuLots` +
+      `&region=${encodeURIComponent(region)}` +
+      `&distributor=${encodeURIComponent(distributor)}`;
+
+    const response = await fetch(url);
+    const text = await response.text();
+    let parsed: { success?: boolean; error?: string; skuLots?: SkuPrefillLot[] } = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      return { ok: false, message: 'Could not read previous stock data from the sheet.' };
+    }
+
+    if (!response.ok || parsed.success === false) {
+      return {
+        ok: false,
+        message: parsed.error ?? `Could not load previous data (${response.status}).`,
+      };
+    }
+
+    return { ok: true, skuLots: parsed.skuLots ?? [] };
+  } catch {
+    return { ok: false, message: 'Could not load previous stock data. Check your connection.' };
+  }
 }
 
 export async function submitToGoogleSheet(

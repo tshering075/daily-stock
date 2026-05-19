@@ -49,6 +49,43 @@ export function createInitialSkuLots(skuIds: string[]): SkuLotsState {
   return Object.fromEntries(skuIds.map((id) => [id, [createEmptyLot()]]));
 }
 
+/** MFG / batch / BBD from a previous sheet submission (stock fields not included). */
+export type SkuPrefillLot = {
+  productSku: string;
+  fifoLotNo: number;
+  mfgDate: string;
+  batchNo: string;
+  bbdDate: string;
+};
+
+/** Pre-fill lot metadata; opening / primary / physical stay blank for today's entry. */
+export function buildSkuLotsFromPrefill(
+  skuCatalog: { id: string; name: string }[],
+  prefill: SkuPrefillLot[]
+): SkuLotsState {
+  const state = createInitialSkuLots(skuCatalog.map((s) => s.id));
+
+  for (const sku of skuCatalog) {
+    const lots = prefill
+      .filter((p) => p.productSku === sku.name)
+      .sort((a, b) => a.fifoLotNo - b.fifoLotNo)
+      .map((p) => ({
+        mfgDate: p.mfgDate || '',
+        batchNo: p.batchNo || '',
+        bbdDate: p.bbdDate || '',
+        openingStock: '',
+        primarySale: '',
+        physicalStock: '',
+      }));
+
+    if (lots.length > 0) {
+      state[sku.id] = lots;
+    }
+  }
+
+  return state;
+}
+
 function parseNumber(value: string): number | null {
   const trimmed = value.trim();
   if (trimmed === '') return null;

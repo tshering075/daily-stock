@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,15 +13,16 @@ import {
 
 import { SkuFifoCard } from '@/components/sku-fifo-card';
 import { SuccessToast } from '@/components/success-toast';
-import { CSD_SKU_GROUPS, CSD_SKUS, KINLEY_WATER_SKUS } from '@/constants/products';
+import { ALL_PRODUCT_SKUS, CSD_SKU_GROUPS, CSD_SKUS, KINLEY_WATER_SKUS } from '@/constants/products';
 import { AppTheme } from '@/constants/app-theme';
 import {
+  buildSkuLotsFromPrefill,
   createInitialSkuLots,
   resolveSkuCatalogLots,
   type SkuDetailSubmission,
   type SkuLotsState,
 } from '@/lib/sku-stock';
-import type { ProductStock } from '@/lib/sheets';
+import { fetchLastSkuPrefill, type ProductStock } from '@/lib/sheets';
 
 export type SubmitResult = { ok: true } | { ok: false; message: string };
 
@@ -46,15 +47,45 @@ export function StockForm({
   onSubmit,
   onBack,
 }: StockFormProps) {
-  const allSkuIds = useMemo(
-    () => [...CSD_SKUS, ...KINLEY_WATER_SKUS].map((s) => s.id),
-    []
-  );
+  const allSkuIds = useMemo(() => ALL_PRODUCT_SKUS.map((s) => s.id), []);
 
   const [skuLots, setSkuLots] = useState<SkuLotsState>(() => createInitialSkuLots(allSkuIds));
+  const [loadingPrefill, setLoadingPrefill] = useState(true);
+  const [prefillHint, setPrefillHint] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPreviousLots() {
+      setLoadingPrefill(true);
+      setPrefillHint(null);
+
+      const result = await fetchLastSkuPrefill(zoneLabel, distributorLabel);
+
+      if (cancelled) return;
+
+      if (result.ok && result.skuLots.length > 0) {
+        setSkuLots(buildSkuLotsFromPrefill(ALL_PRODUCT_SKUS, result.skuLots));
+        const skuCount = new Set(result.skuLots.map((l) => l.productSku)).size;
+        setPrefillHint(
+          `Loaded MFG date, batch no. and BBD from your last entry for this shop (${skuCount} SKU${skuCount === 1 ? '' : 's'}). Enter today's stock only.`
+        );
+      } else {
+        setSkuLots(createInitialSkuLots(allSkuIds));
+      }
+
+      setLoadingPrefill(false);
+    }
+
+    void loadPreviousLots();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [zoneLabel, distributorLabel, allSkuIds]);
 
   const updateSkuLots = (skuId: string, lots: SkuLotsState[string]) => {
     setSkuLots((prev) => ({ ...prev, [skuId]: lots }));
@@ -121,9 +152,20 @@ export function StockForm({
           <ContextRow icon="person-outline" label="Submitted by" value={submittedByLabel} />
           <ContextRow icon="storefront-outline" label="Distributor" value={distributorLabel} />
           <Text style={styles.formHint}>
-            Enter each SKU by FIFO lot (scroll right for BBD and stock). Submit writes one summary
-            row on the region sheet plus each lot on the matching SKU details sheet.
+            Enter each SKU by FIFO lot (scroll right for BBD and stock). MFG, batch and BBD carry
+            over from your last save for this shop — update stock for today only.
           </Text>
+          {loadingPrefill ? (
+            <View style={styles.prefillBanner}>
+              <ActivityIndicator size="small" color={AppTheme.colors.primary} />
+              <Text style={styles.prefillText}>Loading previous MFG / batch / BBD…</Text>
+            </View>
+          ) : prefillHint ? (
+            <View style={styles.prefillBanner}>
+              <Ionicons name="information-circle-outline" size={18} color={AppTheme.colors.primary} />
+              <Text style={styles.prefillText}>{prefillHint}</Text>
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.sectionHeading}>CSD — by SKU</Text>
@@ -135,7 +177,7 @@ export function StockForm({
                 key={sku.id}
                 sku={sku}
                 lots={skuLots[sku.id] ?? []}
-                editable={!submitting}
+                editable={!submitting && !loadingPrefill}
                 onChangeLots={(lots) => updateSkuLots(sku.id, lots)}
               />
             ))}
@@ -150,7 +192,7 @@ export function StockForm({
             key={sku.id}
             sku={sku}
             lots={skuLots[sku.id] ?? []}
-            editable={!submitting}
+            editable={!submitting && !loadingPrefill}
             onChangeLots={(lots) => updateSkuLots(sku.id, lots)}
           />
         ))}
@@ -169,7 +211,7 @@ export function StockForm({
             submitting && styles.submitButtonDisabled,
           ]}
           onPress={handleSubmit}
-          disabled={submitting}>
+          disabled={submitting || loadingPrefill}>
           {submitting ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -265,6 +307,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: AppTheme.colors.textSecondary,
     lineHeight: 19,
+  },
+  prefillBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 10,
+    padding: 10,
+    borderRadius: AppTheme.radius.md,
+    backgroundColor: AppTheme.colors.accentSoft,
+    borderWidth: 1,
+    borderColor: AppTheme.colors.accentSoftBorder,
+  },
+  prefillText: {
+    flex: 1,
+    fontSize: 12,
+    color: AppTheme.colors.text,
+    lineHeight: 18,
   },
   sectionHeading: {
     fontSize: 14,
